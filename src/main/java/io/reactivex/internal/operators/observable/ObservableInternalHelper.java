@@ -1,11 +1,11 @@
 /**
  * Copyright (c) 2016-present, RxJava Contributors.
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
  * compliance with the License. You may obtain a copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License is
  * distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
  * the License for the specific language governing permissions and limitations under the License.
@@ -13,12 +13,26 @@
 package io.reactivex.internal.operators.observable;
 
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 
-import io.reactivex.*;
-import io.reactivex.functions.*;
+import io.reactivex.CompletableSource;
+import io.reactivex.Emitter;
+import io.reactivex.Notification;
+import io.reactivex.Observable;
+import io.reactivex.ObservableSource;
+import io.reactivex.Observer;
+import io.reactivex.Scheduler;
+import io.reactivex.SingleSource;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.BiConsumer;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.functions.Consumer;
+import io.reactivex.functions.Function;
+import io.reactivex.functions.Predicate;
 import io.reactivex.internal.functions.Functions;
 import io.reactivex.internal.functions.ObjectHelper;
+import io.reactivex.internal.operators.completable.CompletableToObservable;
 import io.reactivex.internal.operators.single.SingleToObservable;
 import io.reactivex.observables.ConnectableObservable;
 import io.reactivex.plugins.RxJavaPlugins;
@@ -157,7 +171,7 @@ public final class ObservableInternalHelper {
         private final Function<? super T, ? extends ObservableSource<? extends U>> mapper;
 
         FlatMapWithCombinerOuter(BiFunction<? super T, ? super U, ? extends R> combiner,
-                Function<? super T, ? extends ObservableSource<? extends U>> mapper) {
+                                 Function<? super T, ? extends ObservableSource<? extends U>> mapper) {
             this.combiner = combiner;
             this.mapper = mapper;
         }
@@ -165,14 +179,14 @@ public final class ObservableInternalHelper {
         @Override
         public ObservableSource<R> apply(final T t) throws Exception {
             @SuppressWarnings("unchecked")
-            ObservableSource<U> u = (ObservableSource<U>)mapper.apply(t);
+            ObservableSource<U> u = (ObservableSource<U>) mapper.apply(t);
             return new ObservableMap<U, R>(u, new FlatMapWithCombinerInner<U, R, T>(combiner, t));
         }
     }
 
     public static <T, U, R> Function<T, ObservableSource<R>> flatMapWithCombiner(
             final Function<? super T, ? extends ObservableSource<? extends U>> mapper,
-                    final BiFunction<? super T, ? super U, ? extends R> combiner) {
+            final BiFunction<? super T, ? super U, ? extends R> combiner) {
         return new FlatMapWithCombinerOuter<T, R, U>(combiner, mapper);
     }
 
@@ -195,6 +209,7 @@ public final class ObservableInternalHelper {
 
     enum MapToInt implements Function<Object, Object> {
         INSTANCE;
+
         @Override
         public Object apply(Object t) throws Exception {
             return 0;
@@ -202,7 +217,7 @@ public final class ObservableInternalHelper {
     }
 
     static final class RepeatWhenOuterHandler
-    implements Function<Observable<Notification<Object>>, ObservableSource<?>> {
+            implements Function<Observable<Notification<Object>>, ObservableSource<?>> {
         private final Function<? super Observable<Object>, ? extends ObservableSource<?>> handler;
 
         RepeatWhenOuterHandler(Function<? super Observable<Object>, ? extends ObservableSource<?>> handler) {
@@ -254,7 +269,7 @@ public final class ObservableInternalHelper {
     }
 
     static final class RetryWhenInner
-    implements Function<Observable<Notification<Object>>, ObservableSource<?>> {
+            implements Function<Observable<Notification<Object>>, ObservableSource<?>> {
         private final Function<? super Observable<Throwable>, ? extends ObservableSource<?>> handler;
 
         RetryWhenInner(
@@ -276,7 +291,7 @@ public final class ObservableInternalHelper {
     }
 
     static final class ZipIterableFunction<T, R>
-    implements Function<List<ObservableSource<? extends T>>, ObservableSource<? extends R>> {
+            implements Function<List<ObservableSource<? extends T>>, ObservableSource<? extends R>> {
         private final Function<? super Object[], ? extends R> zipper;
 
         ZipIterableFunction(Function<? super Object[], ? extends R> zipper) {
@@ -293,22 +308,48 @@ public final class ObservableInternalHelper {
         return new ZipIterableFunction<T, R>(zipper);
     }
 
-    public static <T,R> Observable<R> switchMapSingle(Observable<T> source, final Function<? super T, ? extends SingleSource<? extends R>> mapper) {
+    public static <T> Observable<Void> switchMapCompletable(Observable<T> source, final Function<? super T, ? extends CompletableSource> mapper) {
+        return source.switchMap(convertCompletableMapperToObservableMapper(mapper), 1);
+    }
+
+    private static <T, R> Function<T, Observable<R>> convertCompletableMapperToObservableMapper(
+            final Function<? super T, ? extends CompletableSource> mapper) {
+        ObjectHelper.requireNonNull(mapper, "mapper is null");
+        return new ObservableCompletableMapper<T, R>(mapper);
+    }
+
+    static final class ObservableCompletableMapper<T, R> implements Function<T, Observable<R>> {
+
+        final Function<? super T, ? extends CompletableSource> mapper;
+
+        ObservableCompletableMapper(Function<? super T, ? extends CompletableSource> mapper) {
+            this.mapper = mapper;
+        }
+
+        @Override
+        public Observable<R> apply(T t) throws Exception {
+            return RxJavaPlugins.onAssembly(new CompletableToObservable<R>(
+                    ObjectHelper.requireNonNull(mapper.apply(t), "The mapper returned a null value")));
+        }
+
+    }
+
+    public static <T, R> Observable<R> switchMapSingle(Observable<T> source, final Function<? super T, ? extends SingleSource<? extends R>> mapper) {
         return source.switchMap(convertSingleMapperToObservableMapper(mapper), 1);
     }
 
-    public static <T,R> Observable<R> switchMapSingleDelayError(Observable<T> source,
-            Function<? super T, ? extends SingleSource<? extends R>> mapper) {
+    public static <T, R> Observable<R> switchMapSingleDelayError(Observable<T> source,
+                                                                 Function<? super T, ? extends SingleSource<? extends R>> mapper) {
         return source.switchMapDelayError(convertSingleMapperToObservableMapper(mapper), 1);
     }
 
     private static <T, R> Function<T, Observable<R>> convertSingleMapperToObservableMapper(
             final Function<? super T, ? extends SingleSource<? extends R>> mapper) {
         ObjectHelper.requireNonNull(mapper, "mapper is null");
-        return new ObservableMapper<T,R>(mapper);
+        return new ObservableMapper<T, R>(mapper);
     }
 
-    static final class ObservableMapper<T,R> implements Function<T,Observable<R>> {
+    static final class ObservableMapper<T, R> implements Function<T, Observable<R>> {
 
         final Function<? super T, ? extends SingleSource<? extends R>> mapper;
 
@@ -319,7 +360,7 @@ public final class ObservableInternalHelper {
         @Override
         public Observable<R> apply(T t) throws Exception {
             return RxJavaPlugins.onAssembly(new SingleToObservable<R>(
-                ObjectHelper.requireNonNull(mapper.apply(t), "The mapper returned a null value")));
+                    ObjectHelper.requireNonNull(mapper.apply(t), "The mapper returned a null value")));
         }
 
     }

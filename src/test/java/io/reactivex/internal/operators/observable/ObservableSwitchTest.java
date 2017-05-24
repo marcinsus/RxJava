@@ -624,6 +624,57 @@ public class ObservableSwitchTest {
     }
 
     @Test
+    public void switchMapCompletableSource() {
+        Observable.just(0)
+                .switchMapCompletable(new Function<Object, CompletableSource>() {
+                    @Override
+                    public CompletableSource apply(Object v) throws Exception {
+                        return Completable.complete();
+                    }
+                })
+                .test()
+                .assertComplete();
+    }
+    @Test
+    public void switchMapCompletableMapperReturnsNull() {
+        Observable.just(0)
+                .switchMapCompletable(new Function<Object, CompletableSource>() {
+                    @Override
+                    public CompletableSource apply(Object v) throws Exception {
+                        return null;
+                    }
+                })
+                .test()
+                .assertError(NullPointerException.class);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void switchMapCompletableMapperIsNull() {
+        Observable.just(0)
+                .switchMapSingle(null);
+    }
+
+    @Test
+    public void switchMapCompletableFunctionDoesntReturnCompletable() {
+        Observable.just(0)
+                .switchMapCompletable(new Function<Object, CompletableSource>() {
+                    @Override
+                    public CompletableSource apply(Object v) throws Exception {
+                        return new CompletableSource() {
+                            @Override
+                            public void subscribe(CompletableObserver s) {
+                                s.onSubscribe(Disposables.empty());
+                                s.onComplete();
+                            }
+                        };
+                    }
+                })
+                .test()
+                .assertComplete();
+    }
+
+
+    @Test
     public void switchMapSingleJustSource() {
         Observable.just(0)
         .switchMapSingle(new Function<Object, SingleSource<Integer>>() {

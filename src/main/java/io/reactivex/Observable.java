@@ -11012,6 +11012,34 @@ public abstract class Observable<T> implements ObservableSource<T> {
     }
 
     /**
+     * Returns a new CompletableSource by applying a function that you supply to each item emitted by the source
+     * ObservableSource that returns a CompletableSource, and then emitting ??.
+     * <p>
+     * The resulting ObservableSource completes if both the upstream ObservableSource and the last inner Completable, if any, complete.
+     * If the upstream ObservableSource signals an onError, the inner CompletableSource is disposed and the error delivered in-sequence.
+     * <p>
+     * <img width="640" height="350" src="https://raw.github.com/wiki/ReactiveX/RxJava/images/rx-operators/switchMap.png" alt="">
+     * <dl>
+     *  <dt><b>Scheduler:</b></dt>
+     *  <dd>{@code switchMapCompletable} does not operate by default on a particular {@link Scheduler}.</dd>
+     * </dl>
+     *
+     * @param <R> the element type of the inner CompletableSources and the output
+     * @param mapper
+     *            a function that, when applied to an item emitted by the source ObservableSource, returns a
+     *            SingleSource
+     * @return an Observable that emits the ?????
+     * @see <a href="http://reactivex.io/documentation/operators/flatmap.html">ReactiveX operators documentation: FlatMap</a>
+     * @since 2.1.1
+     */
+    @Experimental
+    @CheckReturnValue
+    @SchedulerSupport(SchedulerSupport.NONE)
+    @NonNull
+    public final <R> Observable<R> switchMapCompletable(@NonNull Function<? super T, ? extends CompletableSource> mapper) {
+        return ObservableInternalHelper.switchMapCompletable(this, mapper);
+    }
+    /**
      * Returns a new ObservableSource by applying a function that you supply to each item emitted by the source
      * ObservableSource that returns a SingleSource, and then emitting the item emitted by the most recently emitted
      * of these SingleSources.
